@@ -41,7 +41,6 @@ jobs:
     - name: Extract version folder
       id: version
       run: |
-        # Example tag: transmission-5.0.5-130371f
         TAG="${GITHUB_REF##*/}"  # removes refs/tags/
         # Remove "transmission-" prefix and optional "-<sha>" suffix
         FOLDER=$(echo "$TAG" | sed 's/^transmission-//' | sed 's/-[a-f0-9]\+$//')
@@ -71,3 +70,82 @@ jobs:
           ./$FOLDER
 
         echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+        echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+    # 7. Push Docker images
+    - name: Push images to GHCR
+      run: |
+        docker push "${{ steps.build.outputs.release_tag }}"
+        docker push "${{ steps.build.outputs.latest_tag }}"
+
+    # 8. Make GHCR package public
+    - name: Make GHCR package public
+      run: |
+        gh api -X PATCH \
+          -H "Accept: application/vnd.github+json" \
+          /user/packages/container/transmission \
+          -f visibility=public
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # 9. Generate structured changelog
+    - name: Generate Changelog
+      id: changelog
+      run: |
+        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        if [ -n "$LAST_TAG" ]; then
+          COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:'%s (%an)')
+        else
+          COMMITS=$(git log --pretty=format:'%s (%an)')
+        fi
+
+        FEATURES=""
+        FIXES=""
+        OTHERS=""
+
+        while read -r line; do
+          case "$line" in
+            feat:*) FEATURES+="- ${line#feat:} \n" ;;
+            fix:*) FIXES+="- ${line#fix:} \n" ;;
+            *) OTHERS+="- $line \n" ;;
+          esac
+        done <<< "$COMMITS"
+
+        CHANGELOG=""
+
+        if [ -n "$FEATURES" ]; then
+          CHANGELOG+="**Features:**\n$FEATURES\n"
+        fi
+        if [ -n "$FIXES" ]; then
+          CHANGELOG+="**Fixes:**\n$FIXES\n"
+        fi
+        if [ -n "$OTHERS" ]; then
+          CHANGELOG+="**Others:**\n$OTHERS\n"
+        fi
+
+        if [ -z "$CHANGELOG" ]; then
+          CHANGELOG="No changes since last release."
+        fi
+
+        echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
+
+    # 10. Create or update GitHub Release
+    - name: Create or update GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        name: Transmission ${{ steps.version.outputs.version }}
+        body: |
+          🚀 Transmission Docker Image Release
+
+          Commit: `${{ steps.vars.outputs.sha }}`
+
+          Container images:
+
+          - ${{ steps.build.outputs.release_tag }}
+          - ${{ steps.build.outputs.latest_tag }}
+
+          ### Changelog
+          ${{ steps.changelog.outputs.changelog }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
