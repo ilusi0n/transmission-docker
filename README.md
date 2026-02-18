@@ -5,7 +5,7 @@ Dockerized builds of [Transmission](https://transmissionbt.com/) for multiple ve
 ## Features
 
 - Transmission daemon, CLI, and Web UI  
-- Optimized compilation for performance (`-O3 -march=native -pipe`)  
 - Non-root container execution with Tini  
 - Configurable volumes: `/config`, `/downloads`, `/watch`
+- Configurable environment variables
 
