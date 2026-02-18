@@ -1,12 +1,12 @@
-name: Build Transmission Docker Image
+name: Build & Publish Transmission Image
 
 on:
   workflow_dispatch:
     inputs:
       version-folder:
-        description: 'Transmission version folder to build'
+        description: "Transmission version folder to build (e.g. 4.0.5)"
         required: true
-        default: '4.0.5'
+        default: "4.0.5"
 
 permissions:
   contents: read
@@ -17,62 +17,56 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Checkout repo
+    # 1. Checkout repository
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     # 2. Set up Docker Buildx
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@v3
 
-    # 3. Log in to GHCR
-    - name: Log in to GitHub Container Registry
-      uses: docker/login-action@v2
+    # 3. Login to GHCR
+    - name: Login to GHCR
+      uses: docker/login-action@v3
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    # 4. Determine next build number
-    - name: Determine next build number
-      id: next_build
+    # 4. Generate short commit hash
+    - name: Get short commit SHA
+      id: vars
       run: |
-        VERSION="${{ github.event.inputs.version-folder }}"
-        REPO="${{ github.repository }}"
-        # Get all existing tags for this version
-        EXISTING_TAGS=$(gh api "repos/$REPO/packages/container/transmission/versions" --jq '.[].metadata.container.tags[]?' || echo "")
-        # Filter tags that match the version
-        BUILD_NUM=0
-        for TAG in $EXISTING_TAGS; do
-          if [[ "$TAG" =~ ^$VERSION-build([0-9]+)$ ]]; then
-            NUM="${BASH_REMATCH[1]}"
-            if (( NUM > BUILD_NUM )); then
-              BUILD_NUM=$NUM
-            fi
-          fi
-        done
-        # Next build number
-        BUILD_NUM=$((BUILD_NUM + 1))
-        echo "Next build number: $BUILD_NUM"
-        echo "build-number=$BUILD_NUM" >> $GITHUB_OUTPUT
+        SHORT_SHA=$(git rev-parse --short HEAD)
+        echo "sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
     # 5. Build Docker image
     - name: Build Docker image
       run: |
         VERSION="${{ github.event.inputs.version-folder }}"
-        BUILD_NUM=${{ steps.next_build.outputs.build-number }}
-        IMAGE_TAG="ghcr.io/${{ github.repository }}/transmission:${VERSION}-build${BUILD_NUM}"
-        COMMIT_SHA=$(git rev-parse --short HEAD)
-        echo "Building image $IMAGE_TAG from commit $COMMIT_SHA"
+        SHA="${{ steps.vars.outputs.sha }}"
+        TAG="ghcr.io/${{ github.repository }}/transmission:${VERSION}-release-${SHA}"
+
+        echo "Building $TAG"
+
         docker build \
-          --label "git-commit=${COMMIT_SHA}" \
-          -t "$IMAGE_TAG" \
+          --label "git-commit=${SHA}" \
+          -t "$TAG" \
           ./$VERSION
 
-    # 6. Push Docker image
-    - name: Push Docker image to GHCR
+    # 6. Push image
+    - name: Push image to GHCR
       run: |
         VERSION="${{ github.event.inputs.version-folder }}"
-        BUILD_NUM=${{ steps.next_build.outputs.build-number }}
-        IMAGE_TAG="ghcr.io/${{ github.repository }}/transmission:${VERSION}-build${BUILD_NUM}"
-        docker push "$IMAGE_TAG"
+        SHA="${{ steps.vars.outputs.sha }}"
+        TAG="ghcr.io/${{ github.repository }}/transmission:${VERSION}-release-${SHA}"
+
+        docker push "$TAG"
+
+    # 7. Print result
+    - name: Done
+      run: |
+        VERSION="${{ github.event.inputs.version-folder }}"
+        SHA="${{ steps.vars.outputs.sha }}"
+        echo "Image published:"
+        echo "ghcr.io/${{ github.repository }}/transmission:${VERSION}-release-${SHA}"
