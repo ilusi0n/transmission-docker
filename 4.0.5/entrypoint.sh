@@ -23,6 +23,7 @@ SETTINGS_FILE="$CONFIG_DIR/settings.json"
 : "${SPEED_LIMIT_UP_ENABLED:=false}"
 : "${START_ADDED_TORRENTS:=false}"
 : "${UTP_ENABLED:=true}"
+: "${LPD_ENABLED:=true}"
 
 # Normalize booleans to real JSON booleans
 normalize_bool() {
@@ -40,6 +41,7 @@ RATIO_LIMIT_ENABLED=$(normalize_bool "$RATIO_LIMIT_ENABLED")
 SPEED_LIMIT_UP_ENABLED=$(normalize_bool "$SPEED_LIMIT_UP_ENABLED")
 START_ADDED_TORRENTS=$(normalize_bool "$START_ADDED_TORRENTS")
 UTP_ENABLED=$(normalize_bool "$UTP_ENABLED")
+LPD_ENABLED=$(normalize_bool "$LPD_ENABLED")
 
 # Generate settings.json if missing
 if [ ! -f "$SETTINGS_FILE" ]; then
@@ -74,6 +76,7 @@ jq \
   --argjson speed_enabled "$SPEED_LIMIT_UP_ENABLED" \
   --argjson start_added_torrents "$START_ADDED_TORRENTS" \
   --argjson utp_enabled "$UTP_ENABLED" \
+  --argjson lpd_enabled "$LPD_ENABLED" \
   '
   .["download-dir"] = $download |
   .["rpc-username"] = $user |
@@ -99,6 +102,7 @@ jq \
   .["rpc-whitelist-enabled"] = false |
   .["rpc-host-whitelist-enabled"] = false |
   .["message-level"] = 1 |
+  .["lpd-enabled"] = $lpd_enabled |
   .["start-added-torrents"] = $start_added_torrents
   ' \
   "$SETTINGS_FILE" > "$tmp"
