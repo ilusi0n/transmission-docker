@@ -53,8 +53,8 @@ RUN mkdir build && cd build && \
       -DENABLE_UTILS=ON \
       -DUPNP_INCLUDE_DIR=/usr/local/include \
       -DUPNP_LIBRARY=/usr/local/lib/libminiupnpc.a \
-      -DCMAKE_C_FLAGS="-O3 -march=native -pipe" \
-      -DCMAKE_CXX_FLAGS="-O3 -march=native -pipe" \
+      -DCMAKE_C_FLAGS="-O3 -pipe" \
+      -DCMAKE_CXX_FLAGS="-O3 -pipe" \
       -DCMAKE_INSTALL_PREFIX=/usr/local && \
     make -j$(nproc) && make install
 
