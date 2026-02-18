@@ -8,6 +8,10 @@ on:
         required: true
         default: '4.0.5'
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
