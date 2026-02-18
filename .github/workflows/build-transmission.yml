@@ -9,8 +9,8 @@ on:
         default: "4.0.5"
 
 permissions:
-  contents: write # required to create releases + git tags
-  packages: write # required to push to GHCR
+  contents: write
+  packages: write
 
 jobs:
   build:
@@ -84,7 +84,55 @@ jobs:
         git tag "$TAG"
         git push origin "$TAG"
 
-    # 8. Create GitHub Release
+    # 8. Generate structured changelog
+    - name: Generate Changelog
+      id: changelog
+      run: |
+        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        echo "Last tag: $LAST_TAG"
+
+        # Get commits since last tag
+        if [ -n "$LAST_TAG" ]; then
+          COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:'%s (%an)')
+        else
+          COMMITS=$(git log --pretty=format:'%s (%an)')
+        fi
+
+        # Initialize sections
+        FEATURES=""
+        FIXES=""
+        OTHERS=""
+
+        # Categorize commits
+        while read -r line; do
+          case "$line" in
+            feat:*) FEATURES+="- ${line#feat:} \n" ;;
+            fix:*) FIXES+="- ${line#fix:} \n" ;;
+            *) OTHERS+="- $line \n" ;;
+          esac
+        done <<< "$COMMITS"
+
+        # Build final changelog
+        CHANGELOG=""
+
+        if [ -n "$FEATURES" ]; then
+          CHANGELOG+="**Features:**\n$FEATURES\n"
+        fi
+        if [ -n "$FIXES" ]; then
+          CHANGELOG+="**Fixes:**\n$FIXES\n"
+        fi
+        if [ -n "$OTHERS" ]; then
+          CHANGELOG+="**Others:**\n$OTHERS\n"
+        fi
+
+        # Fallback if empty
+        if [ -z "$CHANGELOG" ]; then
+          CHANGELOG="No changes since last release."
+        fi
+
+        echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
+
+    # 9. Create GitHub Release with structured changelog
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
@@ -99,12 +147,14 @@ jobs:
           Container images:
 
           ghcr.io/${{ github.repository }}/transmission:${{ github.event.inputs.version-folder }}-release-${{ steps.vars.outputs.sha }}
-
           ghcr.io/${{ github.repository }}/transmission:${{ github.event.inputs.version-folder }}-latest
+
+          ### Changelog
+          ${{ steps.changelog.outputs.changelog }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # 9. Done
+    # 10. Done
     - name: Done
       run: |
         VERSION="${{ github.event.inputs.version-folder }}"
