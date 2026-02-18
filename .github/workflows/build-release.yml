@@ -37,104 +37,37 @@ jobs:
         SHORT_SHA=$(git rev-parse --short HEAD)
         echo "sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
-    # 5. Extract version from tag
-    - name: Extract version from tag
+    # 5. Extract version folder from tag
+    - name: Extract version folder
       id: version
       run: |
-        # TAG looks like refs/tags/4.0.5-release-abcd
-        VERSION="${GITHUB_REF##*/}"  # removes refs/tags/
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        # Example tag: transmission-5.0.5-130371f
+        TAG="${GITHUB_REF##*/}"  # removes refs/tags/
+        # Remove "transmission-" prefix and optional "-<sha>" suffix
+        FOLDER=$(echo "$TAG" | sed 's/^transmission-//' | sed 's/-[a-f0-9]\+$//')
+        echo "version=$TAG" >> $GITHUB_OUTPUT
+        echo "folder=$FOLDER" >> $GITHUB_OUTPUT
+        echo "Version folder to build: $FOLDER"
 
     # 6. Build Docker images
     - name: Build Docker images
       id: build
       run: |
         VERSION="${{ steps.version.outputs.version }}"
+        FOLDER="${{ steps.version.outputs.folder }}"
         SHA="${{ steps.vars.outputs.sha }}"
 
         RELEASE_TAG="ghcr.io/${{ github.repository }}/transmission:${VERSION}-release-${SHA}"
         LATEST_TAG="ghcr.io/${{ github.repository }}/transmission:${VERSION}-latest"
 
-        echo "Building Docker images:"
-        echo "$RELEASE_TAG"
-        echo "$LATEST_TAG"
+        echo "Building Docker images from folder ./$FOLDER"
+        echo "Release tag: $RELEASE_TAG"
+        echo "Latest tag: $LATEST_TAG"
 
         docker build \
           --label "git-commit=${SHA}" \
           -t "$RELEASE_TAG" \
           -t "$LATEST_TAG" \
-          ./${VERSION%%-*}   # assuming folder is the version number part before any -release
+          ./$FOLDER
 
-        # Save for later steps
         echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
-        echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
-
-    # 7. Push Docker images
-    - name: Push Docker images
-      run: |
-        docker push "${{ steps.build.outputs.release_tag }}"
-        docker push "${{ steps.build.outputs.latest_tag }}"
-
-    # 8. Generate structured changelog
-    - name: Generate Changelog
-      id: changelog
-      run: |
-        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-        echo "Last tag: $LAST_TAG"
-
-        if [ -n "$LAST_TAG" ]; then
-          COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:'%s (%an)')
-        else
-          COMMITS=$(git log --pretty=format:'%s (%an)')
-        fi
-
-        FEATURES=""
-        FIXES=""
-        OTHERS=""
-
-        while read -r line; do
-          case "$line" in
-            feat:*) FEATURES+="- ${line#feat:} \n" ;;
-            fix:*) FIXES+="- ${line#fix:} \n" ;;
-            *) OTHERS+="- $line \n" ;;
-          esac
-        done <<< "$COMMITS"
-
-        CHANGELOG=""
-
-        if [ -n "$FEATURES" ]; then
-          CHANGELOG+="**Features:**\n$FEATURES\n"
-        fi
-        if [ -n "$FIXES" ]; then
-          CHANGELOG+="**Fixes:**\n$FIXES\n"
-        fi
-        if [ -n "$OTHERS" ]; then
-          CHANGELOG+="**Others:**\n$OTHERS\n"
-        fi
-
-        if [ -z "$CHANGELOG" ]; then
-          CHANGELOG="No changes since last release."
-        fi
-
-        echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
-
-    # 9. Create or update GitHub Release
-    - name: Create or update GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ steps.version.outputs.version }}
-        name: Transmission ${{ steps.version.outputs.version }}
-        body: |
-          🚀 Transmission Docker Image Release
-
-          Commit: `${{ steps.vars.outputs.sha }}`
-
-          Container images:
-
-          - ${{ steps.build.outputs.release_tag }}
-          - ${{ steps.build.outputs.latest_tag }}
-
-          ### Changelog
-          ${{ steps.changelog.outputs.changelog }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
