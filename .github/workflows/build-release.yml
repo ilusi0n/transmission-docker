@@ -78,17 +78,7 @@ jobs:
         docker push "${{ steps.build.outputs.release_tag }}"
         docker push "${{ steps.build.outputs.latest_tag }}"
 
-    # 8. Make GHCR package public
-    - name: Make GHCR package public
-      run: |
-        gh api -X PATCH \
-          -H "Accept: application/vnd.github+json" \
-          /user/packages/container/transmission \
-          -f visibility=public
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    # 9. Generate structured changelog
+    # 8. Generate structured changelog
     - name: Generate Changelog
       id: changelog
       run: |
@@ -129,7 +119,7 @@ jobs:
 
         echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
 
-    # 10. Create or update GitHub Release
+    # 9. Create or update GitHub Release
     - name: Create or update GitHub Release
       uses: softprops/action-gh-release@v1
       with:
