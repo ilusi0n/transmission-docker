@@ -1,0 +1,104 @@
+name: Build Transmission release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "GitHub release tag (must exist as draft, e.g., 4.0.5-release-abcd)"
+        required: true
+        default: "4.0.5-release-xxxx"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Checkout repository
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # 2. Set up Docker Buildx
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    # 3. Login to GHCR
+    - name: Login to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    # 4. Get short commit SHA
+    - name: Get short commit SHA
+      id: vars
+      run: |
+        SHORT_SHA=$(git rev-parse --short HEAD)
+        echo "sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+    # 5. Build Docker image
+    - name: Build Docker image
+      run: |
+        TAG="${{ github.event.inputs.tag }}"
+        VERSION="${TAG%%-*}"   # extract version from tag (e.g., "4.0.5")
+        SHA="${{ steps.vars.outputs.sha }}"
+
+        RELEASE_TAG="ghcr.io/${{ github.repository }}/transmission:${VERSION}-release-${SHA}"
+        LATEST_TAG="ghcr.io/${{ github.repository }}/transmission:${VERSION}-latest"
+
+        echo "Building Docker images:"
+        echo "$RELEASE_TAG"
+        echo "$LATEST_TAG"
+
+        docker build \
+          --label "git-commit=${SHA}" \
+          -t "$RELEASE_TAG" \
+          -t "$LATEST_TAG" \
+          ./$VERSION
+
+        # Save tag names for later
+        echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+        echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+    # 6. Push images
+    - name: Push images to GHCR
+      run: |
+        docker push "${{ steps.build.outputs.release_tag }}"
+        docker push "${{ steps.build.outputs.latest_tag }}"
+
+    # 7. Attach Docker image info to draft release
+    - name: Attach Docker image info to release
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const tag = "${{ github.event.inputs.tag }}";
+          const repo = context.repo;
+
+          // Get the release by tag
+          const release = await github.rest.repos.getReleaseByTag({
+            owner: repo.owner,
+            repo: repo.repo,
+            tag
+          });
+
+          const body = `Docker images for release:\n\n- ${process.env.RELEASE_TAG}\n- ${process.env.LATEST_TAG}`;
+
+          await github.rest.repos.updateRelease({
+            owner: repo.owner,
+            repo: repo.repo,
+            release_id: release.data.id,
+            body
+          });
+      env:
+        RELEASE_TAG: ${{ steps.build.outputs.release_tag }}
+        LATEST_TAG: ${{ steps.build.outputs.latest_tag }}
+
+    # 8. Done
+    - name: Done
+      run: |
+        echo "Build and attach complete for tag ${{ github.event.inputs.tag }}"
