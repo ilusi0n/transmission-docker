@@ -1,13 +1,16 @@
-name: Build & Release Transmission Docker on Tag
+name: Manual Build & Release Transmission Docker
 
 on:
-  push:
-    tags:
-    - '*' # triggers on all tags
+  workflow_dispatch:
+    inputs:
+      folder:
+        description: "Version to build"
+        required: true
+        type: string
 
 permissions:
-  contents: write # create/update GitHub releases
-  packages: write # push Docker images to GHCR
+  contents: write
+  packages: write
 
 jobs:
   build:
@@ -18,11 +21,19 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # 2. Set up Docker Buildx
+    # 2. Validate folder exists
+    - name: Validate folder
+      run: |
+        if [ ! -d "${{ github.event.inputs.folder }}" ]; then
+          echo "Folder '${{ github.event.inputs.folder }}' does not exist."
+          exit 1
+        fi
+
+    # 3. Set up Docker Buildx
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    # 3. Login to GHCR
+    # 4. Login to GHCR
     - name: Login to GHCR
       uses: docker/login-action@v3
       with:
@@ -30,112 +41,68 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    # 4. Get short commit SHA
+    # 5. Get short commit SHA
     - name: Get short commit SHA
       id: vars
-      run: |
-        SHORT_SHA=$(git rev-parse --short HEAD)
-        echo "sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+      run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-    # 5. Extract version folder from tag
-    - name: Extract version folder
-      id: version
+    # 6. Prepare image variables
+    - name: Prepare image variables
+      id: prep
       run: |
-        TAG="${GITHUB_REF##*/}"  # removes refs/tags/
-        # Remove "transmission-" prefix and optional "-<sha>" suffix
-        FOLDER=$(echo "$TAG" | sed 's/^transmission-//' | sed 's/-[a-f0-9]\+$//')
-        echo "version=$TAG" >> $GITHUB_OUTPUT
-        echo "folder=$FOLDER" >> $GITHUB_OUTPUT
-        echo "Version folder to build: $FOLDER"
-
-    # 6. Build Docker images
-    - name: Build Docker images
-      id: build
-      run: |
-        VERSION="${{ steps.version.outputs.version }}"
-        FOLDER="${{ steps.version.outputs.folder }}"
+        FOLDER="${{ github.event.inputs.folder }}"
         SHA="${{ steps.vars.outputs.sha }}"
+        IMAGE_BASE="ghcr.io/${{ github.repository }}/transmission"
 
-        RELEASE_TAG="ghcr.io/${{ github.repository }}/transmission:${VERSION}-release-${SHA}"
-        LATEST_TAG="ghcr.io/${{ github.repository }}/transmission:${VERSION}-latest"
+        SHA_TAG="$IMAGE_BASE:${FOLDER}-${SHA}"
+        LATEST_TAG="$IMAGE_BASE:latest"
+        GIT_TAG="transmission-${FOLDER}-${SHA}"
 
-        echo "Building Docker images from folder ./$FOLDER"
-        echo "Release tag: $RELEASE_TAG"
+        echo "folder=$FOLDER" >> $GITHUB_OUTPUT
+        echo "sha_tag=$SHA_TAG" >> $GITHUB_OUTPUT
+        echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+        echo "git_tag=$GIT_TAG" >> $GITHUB_OUTPUT
+
+        echo "Building folder: $FOLDER"
+        echo "SHA tag: $SHA_TAG"
         echo "Latest tag: $LATEST_TAG"
 
+    # 7. Build Docker image
+    - name: Build Docker images
+      run: |
         docker build \
-          --label "git-commit=${SHA}" \
-          -t "$RELEASE_TAG" \
-          -t "$LATEST_TAG" \
-          ./$FOLDER
+          --label "git-commit=${{ steps.vars.outputs.sha }}" \
+          -t "${{ steps.prep.outputs.sha_tag }}" \
+          -t "${{ steps.prep.outputs.latest_tag }}" \
+          ./${{ steps.prep.outputs.folder }}
 
-        echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
-        echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
-
-    # 7. Push Docker images
+    # 8. Push images
     - name: Push images to GHCR
       run: |
-        docker push "${{ steps.build.outputs.release_tag }}"
-        docker push "${{ steps.build.outputs.latest_tag }}"
+        docker push "${{ steps.prep.outputs.sha_tag }}"
+        docker push "${{ steps.prep.outputs.latest_tag }}"
 
-    # 8. Generate structured changelog
-    - name: Generate Changelog
-      id: changelog
+    # 9. Create Git tag
+    - name: Create Git tag
       run: |
-        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-        if [ -n "$LAST_TAG" ]; then
-          COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:'%s (%an)')
-        else
-          COMMITS=$(git log --pretty=format:'%s (%an)')
-        fi
+        git tag ${{ steps.prep.outputs.git_tag }}
+        git push origin ${{ steps.prep.outputs.git_tag }}
 
-        FEATURES=""
-        FIXES=""
-        OTHERS=""
-
-        while read -r line; do
-          case "$line" in
-            feat:*) FEATURES+="- ${line#feat:} \n" ;;
-            fix:*) FIXES+="- ${line#fix:} \n" ;;
-            *) OTHERS+="- $line \n" ;;
-          esac
-        done <<< "$COMMITS"
-
-        CHANGELOG=""
-
-        if [ -n "$FEATURES" ]; then
-          CHANGELOG+="**Features:**\n$FEATURES\n"
-        fi
-        if [ -n "$FIXES" ]; then
-          CHANGELOG+="**Fixes:**\n$FIXES\n"
-        fi
-        if [ -n "$OTHERS" ]; then
-          CHANGELOG+="**Others:**\n$OTHERS\n"
-        fi
-
-        if [ -z "$CHANGELOG" ]; then
-          CHANGELOG="No changes since last release."
-        fi
-
-        echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
-
-    # 9. Create or update GitHub Release
-    - name: Create or update GitHub Release
+    # 10. Create GitHub Release
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ steps.version.outputs.version }}
-        name: Transmission ${{ steps.version.outputs.version }}
+        tag_name: ${{ steps.prep.outputs.git_tag }}
+        name: Transmission ${{ github.event.inputs.folder }}
         body: |
           🚀 Transmission Docker Image Release
 
+          Folder built: `${{ github.event.inputs.folder }}`
           Commit: `${{ steps.vars.outputs.sha }}`
 
-          Container images:
+          Docker images:
 
-          - ${{ steps.build.outputs.release_tag }}
-          - ${{ steps.build.outputs.latest_tag }}
-
-          ### Changelog
-          ${{ steps.changelog.outputs.changelog }}
+          - ${{ steps.prep.outputs.sha_tag }}
+          - ${{ steps.prep.outputs.latest_tag }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
