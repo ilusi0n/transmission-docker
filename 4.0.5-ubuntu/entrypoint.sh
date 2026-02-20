@@ -26,6 +26,7 @@ SETTINGS_FILE="$CONFIG_DIR/settings.json"
 : "${LPD_ENABLED:=false}"
 : "${DOWNLOAD_QUEUE_ENABLED:=false}"
 : "${DOWNLOAD_QUEUE_SIZE:=15}"
+: "${PREALLOCATION:=0}"
 
 # Normalize booleans to real JSON booleans
 normalize_bool() {
@@ -82,6 +83,7 @@ jq \
   --argjson lpd_enabled "$LPD_ENABLED" \
   --argjson download_queue_enabled "$DOWNLOAD_QUEUE_ENABLED" \
   --argjson download_queue_size "$DOWNLOAD_QUEUE_SIZE" \
+  --argjson preallocation "$PREALLOCATION" \
   '
   .["download-dir"] = $download |
   .["rpc-username"] = $user |
@@ -109,7 +111,8 @@ jq \
   .["rpc-host-whitelist-enabled"] = false |
   .["message-level"] = 1 |
   .["lpd-enabled"] = $lpd_enabled |
-  .["start-added-torrents"] = $start_added_torrents
+  .["start-added-torrents"] = $start_added_torrents |
+  .["preallocation"] = $preallocation
   ' \
   "$SETTINGS_FILE" > "$tmp"
 

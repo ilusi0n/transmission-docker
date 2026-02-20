@@ -54,8 +54,8 @@
           -DENABLE_QT=OFF \
           -DENABLE_SYSTEMD=OFF \
           -DENABLE_UTILS=ON \
-          -DCMAKE_C_FLAGS="-O3 -pipe -fno-plt" \
-          -DCMAKE_CXX_FLAGS="-O3 -pipe -fno-plt" \
+          -DCMAKE_C_FLAGS="-O3 -fno-plt -flto" \
+          -DCMAKE_CXX_FLAGS="-O3 -fno-plt -flto" \
           -DCMAKE_INSTALL_PREFIX=/usr/local && \
         make -j"$(nproc)" && \
         make install
