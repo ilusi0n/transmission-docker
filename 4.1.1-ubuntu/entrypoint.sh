@@ -17,12 +17,12 @@ SETTINGS_FILE="$CONFIG_DIR/settings.json"
 : "${PEX_ENABLED:=true}"
 : "${RATIO_LIMIT:=0}"
 : "${RATIO_LIMIT_ENABLED:=false}"
-: "${PEER_LIMIT_GLOBAL:=300}"
-: "${PEER_LIMIT_PER_TORRENT:=50}"
+: "${PEER_LIMIT_GLOBAL:=500}"
+: "${PEER_LIMIT_PER_TORRENT:=80}"
 : "${SPEED_LIMIT_UP:=1024}"
 : "${SPEED_LIMIT_UP_ENABLED:=false}"
 : "${START_ADDED_TORRENTS:=false}"
-: "${UTP_ENABLED:=true}"
+: "${UTP_ENABLED:=false}"
 : "${LPD_ENABLED:=false}"
 : "${DOWNLOAD_QUEUE_ENABLED:=false}"
 : "${DOWNLOAD_QUEUE_SIZE:=15}"
@@ -30,8 +30,11 @@ SETTINGS_FILE="$CONFIG_DIR/settings.json"
 
 # Normalize booleans to real JSON booleans
 normalize_bool() {
-    case "${1,,}" in
+    local val="${1:-false}"   # default to false if empty
+    val="${val,,}"             # lowercase
+    case "$val" in
         true|1|yes) echo "true" ;;
+        false|0|no) echo "false" ;;
         *) echo "false" ;;
     esac
 }

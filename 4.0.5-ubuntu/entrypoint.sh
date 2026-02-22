@@ -17,21 +17,27 @@ SETTINGS_FILE="$CONFIG_DIR/settings.json"
 : "${PEX_ENABLED:=true}"
 : "${RATIO_LIMIT:=0}"
 : "${RATIO_LIMIT_ENABLED:=false}"
-: "${PEER_LIMIT_GLOBAL:=300}"
-: "${PEER_LIMIT_PER_TORRENT:=50}"
+: "${PEER_LIMIT_GLOBAL:=500}"
+: "${PEER_LIMIT_PER_TORRENT:=40}"
 : "${SPEED_LIMIT_UP:=1024}"
 : "${SPEED_LIMIT_UP_ENABLED:=false}"
 : "${START_ADDED_TORRENTS:=false}"
-: "${UTP_ENABLED:=true}"
+: "${UTP_ENABLED:=false}"
 : "${LPD_ENABLED:=false}"
 : "${DOWNLOAD_QUEUE_ENABLED:=false}"
 : "${DOWNLOAD_QUEUE_SIZE:=15}"
 : "${PREALLOCATION:=0}"
+: "${BLOCKLIST_ENABLED:=false}"
+: "${BLOCKLIST_URL:=""}"
+
 
 # Normalize booleans to real JSON booleans
 normalize_bool() {
-    case "${1,,}" in
+    local val="${1:-false}"   # default to false if empty
+    val="${val,,}"             # lowercase
+    case "$val" in
         true|1|yes) echo "true" ;;
+        false|0|no) echo "false" ;;
         *) echo "false" ;;
     esac
 }
@@ -46,6 +52,7 @@ START_ADDED_TORRENTS=$(normalize_bool "$START_ADDED_TORRENTS")
 UTP_ENABLED=$(normalize_bool "$UTP_ENABLED")
 LPD_ENABLED=$(normalize_bool "$LPD_ENABLED")
 DOWNLOAD_QUEUE_ENABLED=$(normalize_bool "$DOWNLOAD_QUEUE_ENABLED")
+BLOCKLIST_ENABLED=$(normalize_bool "$BLOCKLIST_ENABLED")
 
 # Generate settings.json if missing
 if [ ! -f "$SETTINGS_FILE" ]; then
@@ -66,6 +73,7 @@ jq \
   --arg user "$RPC_USER" \
   --arg pass "$RPC_PASS" \
   --arg watch "$WATCH_DIR" \
+  --arg blocklist_url "$BLOCKLIST_URL" \
   --argjson dht "$DHT_ENABLED" \
   --argjson peer_port "$PEER_PORT" \
   --argjson cache "$CACHE_SIZE_MB" \
@@ -84,6 +92,7 @@ jq \
   --argjson download_queue_enabled "$DOWNLOAD_QUEUE_ENABLED" \
   --argjson download_queue_size "$DOWNLOAD_QUEUE_SIZE" \
   --argjson preallocation "$PREALLOCATION" \
+  --argjson blocklist_enabled "$BLOCKLIST_ENABLED" \
   '
   .["download-dir"] = $download |
   .["rpc-username"] = $user |
@@ -112,6 +121,9 @@ jq \
   .["message-level"] = 1 |
   .["lpd-enabled"] = $lpd_enabled |
   .["start-added-torrents"] = $start_added_torrents |
+  .["blocklist-enabled"] = $blocklist_enabled |
+  .["blocklist-url"] = $blocklist_url |
+  .["upload-slots-per-torrent"] = 4 |
   .["preallocation"] = $preallocation
   ' \
   "$SETTINGS_FILE" > "$tmp"
