@@ -55,8 +55,8 @@
         -D ENABLE_QT=OFF \
         -D ENABLE_SYSTEMD=OFF \
         -D ENABLE_UTILS=ON \
-        -D CMAKE_C_FLAGS="-O3 -march=native -flto" \
-        -D CMAKE_CXX_FLAGS="-O3 -march=native -flto" \
+        -D CMAKE_C_FLAGS="-O3 -flto" \
+        -D CMAKE_CXX_FLAGS="-O3 -flto" \
         -D CMAKE_INSTALL_PREFIX=/usr/local \
         && cmake --build build -j"$(nproc)" \
         && cmake --install build
