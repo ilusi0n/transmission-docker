@@ -4,7 +4,7 @@
     FROM ubuntu:24.04 AS builder
 
     ENV DEBIAN_FRONTEND=noninteractive
-    ENV TRANSMISSION_VERSION=4.1.1
+    ARG TRANSMISSION_VERSION=4.1.1
     
     # Install build dependencies
     RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -24,14 +24,15 @@
         zlib1g-dev \
         xz-utils \
         file \
+        ninja-build \
         && rm -rf /var/lib/apt/lists/*
 
     
     WORKDIR /tmp/build
     
-    # -----------------------
+    # ----------------------
     # Build Transmission
-    # -----------------------
+    # ----------------------
     
     RUN curl -fsSL \
         "https://github.com/transmission/transmission/releases/download/${TRANSMISSION_VERSION}/transmission-${TRANSMISSION_VERSION}.tar.xz" \
@@ -40,26 +41,26 @@
         && rm transmission.tar.xz
     
     WORKDIR /tmp/build/transmission-${TRANSMISSION_VERSION}
-    
-    RUN mkdir build && cd build && \
-        cmake .. \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
-          -DENABLE_DAEMON=ON \
-          -DENABLE_CLI=ON \
-          -DENABLE_WEB=ON \
-          -DENABLE_NLS=OFF \
-          -DENABLE_TESTS=OFF \
-          -DENABLE_GTK=OFF \
-          -DENABLE_QT=OFF \
-          -DENABLE_SYSTEMD=OFF \
-          -DENABLE_UTILS=ON \
-          -DCMAKE_C_FLAGS="-O3 -fno-plt -flto" \
-          -DCMAKE_CXX_FLAGS="-O3 -fno-plt -flto" \
-          -DCMAKE_INSTALL_PREFIX=/usr/local && \
-        make -j"$(nproc)" && \
-        make install
-    
+
+    RUN cmake -S . -B build \
+        -G Ninja \
+        -D CMAKE_BUILD_TYPE=Release \
+        -D CMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+        -D ENABLE_DAEMON=ON \
+        -D ENABLE_CLI=ON \
+        -D ENABLE_WEB=ON \
+        -D ENABLE_NLS=OFF \
+        -D ENABLE_TESTS=OFF \
+        -D ENABLE_GTK=OFF \
+        -D ENABLE_QT=OFF \
+        -D ENABLE_SYSTEMD=OFF \
+        -D ENABLE_UTILS=ON \
+        -D CMAKE_C_FLAGS="-O3 -flto" \
+        -D CMAKE_CXX_FLAGS="-O3 -flto" \
+        -D CMAKE_INSTALL_PREFIX=/usr/local \
+        && cmake --build build -j"$(nproc)" \
+        && cmake --install build
+
     # Strip only actual ELF binaries (safe)
     RUN find /usr/local -type f -print0 | \
         xargs -0 file | \
@@ -87,6 +88,7 @@
         jq \
         ca-certificates \
         curl \
+        wget \
         && rm -rf /var/lib/apt/lists/*
 
     
@@ -96,11 +98,11 @@
     # Copy built binaries
     COPY --from=builder /usr/local /usr/local
     
-    RUN ldconfig
-    
     # Create required directories
     RUN mkdir -p /config /downloads /watch && \
         chown -R transmission:transmission /config /downloads /watch
+
+    WORKDIR /config
     
     # Copy entrypoint
     COPY entrypoint.sh /entrypoint.sh
