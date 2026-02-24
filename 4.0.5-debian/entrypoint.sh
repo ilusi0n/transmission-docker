@@ -10,25 +10,34 @@ SETTINGS_FILE="$CONFIG_DIR/settings.json"
 : "${DOWNLOAD_DIR:=/downloads}"
 : "${DHT_ENABLED:=true}"
 : "${PEER_PORT:=51413}"
-: "${CACHE_SIZE_MB:=64}"
+: "${CACHE_SIZE_MB:=128}"
 : "${WATCH_DIR_ENABLED:=false}"
 : "${WATCH_DIR:=/watch}"
 : "${RENAME_PARTIAL_FILES:=false}"
 : "${PEX_ENABLED:=true}"
 : "${RATIO_LIMIT:=0}"
 : "${RATIO_LIMIT_ENABLED:=false}"
-: "${PEER_LIMIT_GLOBAL:=300}"
-: "${PEER_LIMIT_PER_TORRENT:=35}"
+: "${PEER_LIMIT_GLOBAL:=500}"
+: "${PEER_LIMIT_PER_TORRENT:=40}"
 : "${SPEED_LIMIT_UP:=1024}"
 : "${SPEED_LIMIT_UP_ENABLED:=false}"
 : "${START_ADDED_TORRENTS:=false}"
-: "${UTP_ENABLED:=true}"
-: "${LPD_ENABLED:=true}"
+: "${UTP_ENABLED:=false}"
+: "${LPD_ENABLED:=false}"
+: "${DOWNLOAD_QUEUE_ENABLED:=false}"
+: "${DOWNLOAD_QUEUE_SIZE:=15}"
+: "${PREALLOCATION:=0}"
+: "${BLOCKLIST_ENABLED:=false}"
+: "${BLOCKLIST_URL:=""}"
+
 
 # Normalize booleans to real JSON booleans
 normalize_bool() {
-    case "${1,,}" in
+    local val="${1:-false}"   # default to false if empty
+    val="${val,,}"             # lowercase
+    case "$val" in
         true|1|yes) echo "true" ;;
+        false|0|no) echo "false" ;;
         *) echo "false" ;;
     esac
 }
@@ -42,6 +51,8 @@ SPEED_LIMIT_UP_ENABLED=$(normalize_bool "$SPEED_LIMIT_UP_ENABLED")
 START_ADDED_TORRENTS=$(normalize_bool "$START_ADDED_TORRENTS")
 UTP_ENABLED=$(normalize_bool "$UTP_ENABLED")
 LPD_ENABLED=$(normalize_bool "$LPD_ENABLED")
+DOWNLOAD_QUEUE_ENABLED=$(normalize_bool "$DOWNLOAD_QUEUE_ENABLED")
+BLOCKLIST_ENABLED=$(normalize_bool "$BLOCKLIST_ENABLED")
 
 # Generate settings.json if missing
 if [ ! -f "$SETTINGS_FILE" ]; then
@@ -62,6 +73,7 @@ jq \
   --arg user "$RPC_USER" \
   --arg pass "$RPC_PASS" \
   --arg watch "$WATCH_DIR" \
+  --arg blocklist_url "$BLOCKLIST_URL" \
   --argjson dht "$DHT_ENABLED" \
   --argjson peer_port "$PEER_PORT" \
   --argjson cache "$CACHE_SIZE_MB" \
@@ -77,6 +89,10 @@ jq \
   --argjson start_added_torrents "$START_ADDED_TORRENTS" \
   --argjson utp_enabled "$UTP_ENABLED" \
   --argjson lpd_enabled "$LPD_ENABLED" \
+  --argjson download_queue_enabled "$DOWNLOAD_QUEUE_ENABLED" \
+  --argjson download_queue_size "$DOWNLOAD_QUEUE_SIZE" \
+  --argjson preallocation "$PREALLOCATION" \
+  --argjson blocklist_enabled "$BLOCKLIST_ENABLED" \
   '
   .["download-dir"] = $download |
   .["rpc-username"] = $user |
@@ -95,7 +111,8 @@ jq \
   .["speed-limit-up"] = $speed_up |
   .["speed-limit-up-enabled"] = $speed_enabled |
   .["trash-original-torrent-files"] = true |
-  .["download-queue-enabled"] = false |
+  .["download-queue-size"] = $download_queue_size |
+  .["download-queue-enabled"] = $download_queue_enabled |
   .["port-forwarding-enabled"] = false |
   .["utp-enabled"] = $utp_enabled |
   .["encryption"] = 2 |
@@ -103,7 +120,11 @@ jq \
   .["rpc-host-whitelist-enabled"] = false |
   .["message-level"] = 1 |
   .["lpd-enabled"] = $lpd_enabled |
-  .["start-added-torrents"] = $start_added_torrents
+  .["start-added-torrents"] = $start_added_torrents |
+  .["blocklist-enabled"] = $blocklist_enabled |
+  .["blocklist-url"] = $blocklist_url |
+  .["upload-slots-per-torrent"] = 4 |
+  .["preallocation"] = $preallocation
   ' \
   "$SETTINGS_FILE" > "$tmp"
 
