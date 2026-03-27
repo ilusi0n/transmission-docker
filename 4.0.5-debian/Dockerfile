@@ -3,11 +3,12 @@
 # -----------------------------
 FROM debian:trixie-slim AS builder
 
+ENV DEBIAN_FRONTEND=noninteractive
 ARG TRANSMISSION_VERSION=4.0.5
 
 # Install build dependencies
 RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends \
         build-essential \
         cmake \
         pkg-config \
@@ -23,6 +24,7 @@ RUN apt-get update && \
         xz-utils \
         file \
         ninja-build \
+        npm \
     && rm -rf /var/lib/apt/lists/*
 
 # -----------------------
@@ -45,14 +47,16 @@ RUN cmake -S . -B build \
     -D ENABLE_DAEMON=ON \
     -D ENABLE_CLI=ON \
     -D ENABLE_WEB=ON \
+    -D WITH_CRYPTO=openssl \
+    -D REBUILD_WEB=ON \
     -D ENABLE_NLS=OFF \
     -D ENABLE_TESTS=OFF \
     -D ENABLE_GTK=OFF \
     -D ENABLE_QT=OFF \
     -D ENABLE_SYSTEMD=OFF \
     -D ENABLE_UTILS=ON \
-    -D CMAKE_C_FLAGS="-O3 -flto" \
-    -D CMAKE_CXX_FLAGS="-O3 -flto" \
+    -D CMAKE_C_FLAGS="${CMAKE_C_FLAGS} -O3 -ffat-lto-objects" \
+    -D CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} -O3 -ffat-lto-objects" \
     -D CMAKE_INSTALL_PREFIX=/usr/local \
     && cmake --build build -j"$(nproc)" \
     && cmake --install build
@@ -62,6 +66,8 @@ RUN find /usr/local -type f -print0 | \
     xargs -0 file | \
     awk -F: '/ELF/ {print $1}' | \
     xargs -r strip --strip-unneeded
+
+RUN rm -rf /tmp/build
 
 # -----------------------------
 # Stage 2: Runtime
