@@ -8,13 +8,13 @@ SETTINGS_FILE="$CONFIG_DIR/settings.json"
 : "${RPC_USER:=transmission}"
 : "${RPC_PASS:=transmission}"
 : "${DOWNLOAD_DIR:=/downloads}"
-: "${DHT_ENABLED:=true}"
+: "${DHT_ENABLED:=false}"
 : "${PEER_PORT:=51413}"
 : "${CACHE_SIZE_MB:=0}"
 : "${WATCH_DIR_ENABLED:=false}"
 : "${WATCH_DIR:=/watch}"
 : "${RENAME_PARTIAL_FILES:=false}"
-: "${PEX_ENABLED:=true}"
+: "${PEX_ENABLED:=false}"
 : "${RATIO_LIMIT:=0}"
 : "${RATIO_LIMIT_ENABLED:=false}"
 : "${PEER_LIMIT_GLOBAL:=300}"
@@ -29,6 +29,9 @@ SETTINGS_FILE="$CONFIG_DIR/settings.json"
 : "${PREALLOCATION:=0}"
 : "${BLOCKLIST_ENABLED:=false}"
 : "${BLOCKLIST_URL:=""}"
+: "${UPLOAD_SLOTS_PER_TORRENT:=8}"
+: "${SEED_QUEUE_SIZE:=6}"
+: "${SEED_QUEUE_ENABLED:=false}"
 
 
 # Normalize booleans to real JSON booleans
@@ -53,6 +56,7 @@ UTP_ENABLED=$(normalize_bool "$UTP_ENABLED")
 LPD_ENABLED=$(normalize_bool "$LPD_ENABLED")
 DOWNLOAD_QUEUE_ENABLED=$(normalize_bool "$DOWNLOAD_QUEUE_ENABLED")
 BLOCKLIST_ENABLED=$(normalize_bool "$BLOCKLIST_ENABLED")
+SEED_QUEUE_ENABLED=$(normalize_bool "$SEED_QUEUE_ENABLED")
 
 # Generate settings.json if missing
 if [ ! -f "$SETTINGS_FILE" ]; then
@@ -93,6 +97,9 @@ jq \
   --argjson download_queue_size "$DOWNLOAD_QUEUE_SIZE" \
   --argjson preallocation "$PREALLOCATION" \
   --argjson blocklist_enabled "$BLOCKLIST_ENABLED" \
+  --argjson upload_slots_per_torrent "$UPLOAD_SLOTS_PER_TORRENT" \
+  --argjson seed_queue_size "$SEED_QUEUE_SIZE" \
+  --argjson seed_queue_enabled "$SEED_QUEUE_ENABLED" \
   '
   .["download-dir"] = $download |
   .["rpc-username"] = $user |
@@ -123,8 +130,10 @@ jq \
   .["start-added-torrents"] = $start_added_torrents |
   .["blocklist-enabled"] = $blocklist_enabled |
   .["blocklist-url"] = $blocklist_url |
-  .["upload-slots-per-torrent"] = 4 |
-  .["preallocation"] = $preallocation
+  .["upload-slots-per-torrent"] = $upload_slots_per_torrent |
+  .["preallocation"] = $preallocation |
+  .["seed-queue-size"] = $seed_queue_size |
+  .["seed-queue-enabled"] = $seed_queue_enabled
   ' \
   "$SETTINGS_FILE" > "$tmp"
 
